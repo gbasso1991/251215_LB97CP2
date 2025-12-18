@@ -69,6 +69,9 @@ class ResultadosESAR:
         
         # 4. Calcular estadísticas básicas
         self._calcular_estadisticas()
+        print(f"  - Primer ciclo: {os.path.basename(self.primer_ciclo['ruta_archivo'])}")
+        print(f"  - Último ciclo: {os.path.basename(self.ultimo_ciclo['ruta_archivo'])}")
+
     
     def _cargar_resultados_txt(self):
         """Busca y carga el archivo resultados.txt en el directorio"""
@@ -104,82 +107,60 @@ class ResultadosESAR:
             raise
     
     def _cargar_ciclos_extremos(self):
-        """Carga el primer y último ciclo de magnetización"""
-        # Verificar que existe el directorio de ciclos
+        """
+        Carga el primer y último ciclo de magnetización
+        según el orden de self.files (resultados.txt).
+        """
+
         if not os.path.exists(self.directorio_ciclos):
             print(f"⚠ Directorio de ciclos no encontrado: {self.directorio_ciclos}")
             self.primer_ciclo = None
             self.ultimo_ciclo = None
-            self.primer_ciclo_metadata = None
-            self.ultimo_ciclo_metadata = None
             return
-        
-        # Verificar que tenemos nombres de archivos
+
         if not hasattr(self, 'files') or len(self.files) == 0:
-            print("⚠ No hay archivos registrados para buscar ciclos")
+            print("⚠ Lista de archivos vacía (files)")
             self.primer_ciclo = None
             self.ultimo_ciclo = None
             return
-        
-        # Obtener nombres base (sin extensión .txt)
+
+        def cargar_ciclo_desde_file(nombre_file):
+            base = os.path.splitext(nombre_file)[0]
+            nombre_ciclo = f"{base}_ciclo_H_M.txt"
+            ruta = os.path.join(self.directorio_ciclos, nombre_ciclo)
+
+            if not os.path.exists(ruta):
+                raise FileNotFoundError(nombre_ciclo)
+
+            t, H_Vs, M_Vs, H_kAm, M_Am, meta = lector_ciclos(ruta)
+            return {
+                'tiempo': t,
+                'H_Vs': H_Vs,
+                'M_Vs': M_Vs,
+                'H_kAm': H_kAm,
+                'M_Am': M_Am,
+                'metadata': meta,
+                'ruta_archivo': ruta
+            }
+
+        # ---------- PRIMER CICLO ----------
         try:
-            primer_archivo_base = os.path.splitext(self.files[0])[0]
-            ultimo_archivo_base = os.path.splitext(self.files[-1])[0]
+            self.primer_ciclo = cargar_ciclo_desde_file(self.files[0])
+            self.primer_ciclo_metadata = self.primer_ciclo['metadata']
+            print(f"✓ Primer ciclo (files[0]): {os.path.basename(self.primer_ciclo['ruta_archivo'])}")
         except Exception as e:
-            print(f"⚠ Error procesando nombres de archivos: {e}")
+            print(f"✗ Error cargando primer ciclo: {e}")
             self.primer_ciclo = None
+
+        # ---------- ÚLTIMO CICLO ----------
+        try:
+            self.ultimo_ciclo = cargar_ciclo_desde_file(self.files[-1])
+            self.ultimo_ciclo_metadata = self.ultimo_ciclo['metadata']
+            print(f"✓ Último ciclo (files[-1]): {os.path.basename(self.ultimo_ciclo['ruta_archivo'])}")
+        except Exception as e:
+            print(f"✗ Error cargando último ciclo: {e}")
             self.ultimo_ciclo = None
-            return
-        
-        # Construir rutas completas de ciclos
-        nombre_primer_ciclo = f"{primer_archivo_base}_ciclo_H_M.txt"
-        nombre_ultimo_ciclo = f"{ultimo_archivo_base}_ciclo_H_M.txt"
-        
-        ruta_primer_ciclo = os.path.join(self.directorio_ciclos, nombre_primer_ciclo)
-        ruta_ultimo_ciclo = os.path.join(self.directorio_ciclos, nombre_ultimo_ciclo)
-        
-        # Cargar primer ciclo
-        if os.path.exists(ruta_primer_ciclo):
-            try:
-                t1, H_Vs1, M_Vs1, H_kAm1, M_Am1, meta1 = lector_ciclos(ruta_primer_ciclo)
-                self.primer_ciclo = {
-                    'tiempo': t1,
-                    'H_Vs': H_Vs1,
-                    'M_Vs': M_Vs1,
-                    'H_kAm': H_kAm1,
-                    'M_Am': M_Am1,
-                    'metadata': meta1,
-                    'ruta_archivo': ruta_primer_ciclo
-                }
-                self.primer_ciclo_metadata = meta1
-                print(f"✓ Primer ciclo: {nombre_primer_ciclo}")
-            except Exception as e:
-                print(f"✗ Error cargando primer ciclo: {e}")
-                self.primer_ciclo = None
-        else:
-            print(f"⚠ Primer ciclo no encontrado: {nombre_primer_ciclo}")
-            self.primer_ciclo = None
-        
-        # Cargar último ciclo
-        if os.path.exists(ruta_ultimo_ciclo):
-            try:
-                t2, H_Vs2, M_Vs2, H_kAm2, M_Am2, meta2 = lector_ciclos(ruta_ultimo_ciclo)
-                self.ultimo_ciclo = {
-                    'tiempo': t2,
-                    'H_Vs': H_Vs2,
-                    'M_Vs': M_Vs2,
-                    'H_kAm': H_kAm2,
-                    'M_Am': M_Am2,
-                    'metadata': meta2,
-                    'ruta_archivo': ruta_ultimo_ciclo}
-                self.ultimo_ciclo_metadata = meta2
-                print(f"✓ Último ciclo: {nombre_ultimo_ciclo}")
-            except Exception as e:
-                print(f"✗ Error cargando último ciclo: {e}")
-                self.ultimo_ciclo = None
-        else:
-            print(f"⚠ Último ciclo no encontrado: {nombre_ultimo_ciclo}")
-            self.ultimo_ciclo = None
+
     
     def _calcular_estadisticas(self):
         """Calcula estadísticas básicas de los datos"""
@@ -237,19 +218,11 @@ class ResultadosESAR:
                 sar_stats = self.estadisticas['SAR']
                 print(f"SAR promedio: {sar_stats['media']:.3f} ± {sar_stats['desviacion']:.3f} {sar_stats['unidad']}")
         
-        # Información de ciclos
-        print(f"\nCiclos de magnetización:")
-        if self.primer_ciclo:
-            temp = self.primer_ciclo['metadata'].get('Temperatura', 'N/A')
-            print(f"  - Primer ciclo: ✓ (T = {temp}°C)")
-        else:
-            print(f"  - Primer ciclo: ✗")
-        
-        if self.ultimo_ciclo:
-            temp = self.ultimo_ciclo['metadata'].get('Temperatura', 'N/A')
-            print(f"  - Último ciclo: ✓ (T = {temp}°C)")
-        else:
-            print(f"  - Último ciclo: ✗")
+        print("Ciclos cargados:")
+        print(f"  Directorio RT: {os.path.basename(self.directorio)}")
+        print(f"  Primer ciclo -> file base: {self.files[0]}")
+        print(f"  Último ciclo -> file base: {self.files[-1]}")
+
         
         print(f"{'='*60}")
     
@@ -298,7 +271,7 @@ class ResultadosESAR:
             titulo += f"\n{os.path.basename(self.meta['Archivo_datos'])}"
         ax.set_title(titulo, fontsize=13, fontweight='bold')
         
-        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.grid(True)
         ax.legend(fontsize=11, loc='best', framealpha=0.9)
         ax.set_xlim(0,)
         # Ejes centrados en 0 si es apropiado
